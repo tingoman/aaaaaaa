@@ -1,0 +1,215 @@
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
+local heartbeat = game:GetService("RunService").Heartbeat
+
+local scriptEnabled = enoxacin['Global'].Script.Enabled
+local visualizerEnabled = enoxacin['Global'].HitboxVisualizer.Enabled
+local LocalPlayer = Players.LocalPlayer
+local targetPlayer = nil  -- Variable to store the target player
+local hitboxVisualizer = nil  -- Store the hitbox visualizer for cleanup
+
+if _G.HitboxVisualizerInjected then
+    StarterGui:SetCore("SendNotification", {
+        Title = "$",
+        Text = "Already Injected, Updating...",
+        Duration = 2
+    })
+    _G.PredictionFactor = Vector3.new(enoxacin['Global'].Prediction.X, enoxacin['Global'].Prediction.Y, enoxacin['Global'].Prediction.Z)
+    _G.HitboxSize = Vector3.new(enoxacin['Global'].HitboxVisualizer.HitboxSize.X, enoxacin['Global'].HitboxVisualizer.HitboxSize.Y, enoxacin['Global'].HitboxVisualizer.HitboxSize.Z)
+    return
+end
+
+_G.HitboxVisualizerInjected = true
+_G.PredictionFactor = Vector3.new(enoxacin['Global'].Prediction.X, enoxacin['Global'].Prediction.Y, enoxacin['Global'].Prediction.Z)
+_G.HitboxSize = Vector3.new(enoxacin['Global'].HitboxVisualizer.HitboxSize.X, enoxacin['Global'].HitboxVisualizer.HitboxSize.Y, enoxacin['Global'].HitboxVisualizer.HitboxSize.Z)
+
+-- // Check if a 3D vector (A) is inside another 3D vector (B) with a size (Size)
+local function IsVectorInVector3D(A, B, Size)
+    return A.X >= B.X and A.Y >= B.Y and A.Z >= B.Z and
+           A.X <= B.X + Size.X and A.Y <= B.Y + Size.Y and A.Z <= B.Z + Size.Z
+end
+
+-- // Calculate velocity (Anti-spoofing)
+local function GetNewVelocity(Part)
+    local LastPosition = Part.Position
+    task.wait(0.085)
+    local CurrentPosition = Part.Position
+    local Velocity = (CurrentPosition - LastPosition) / 0.085
+    return Velocity * Vector3.new(1, 0, 1)  -- Ignoring Y component for horizontal velocity
+end
+
+local function GetMoveVelocity(Player)
+    local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.RootPart and humanoid:GetMoveVelocity() or Vector3.zero
+end
+
+local function ApplyPrediction(Part, Velocity)
+    -- Apply prediction based on X, Y, Z prediction factors
+    local prediction = Vector3.new(
+        Velocity.X * _G.PredictionFactor.X,
+        Velocity.Y * _G.PredictionFactor.Y,
+        Velocity.Z * _G.PredictionFactor.Z
+    )
+    return Part.Position + prediction
+end
+
+local function ToggleScript()
+    scriptEnabled = not scriptEnabled
+    StarterGui:SetCore("SendNotification", {
+        Title = "$",
+        Text = scriptEnabled and "On" or "Off",
+        Duration = 2
+    })
+
+    if not scriptEnabled then
+        targetPlayer = nil  -- Reset target player when the script is toggled off
+        -- Destroy visualizer when untargeted or script is off
+        if hitboxVisualizer then
+            hitboxVisualizer:Destroy()
+            hitboxVisualizer = nil
+        end
+    end
+end
+
+local function ToggleHitboxVisualizer()
+    -- Only toggle the visualizer if the keybind is enabled
+    if enoxacin['Keybinds'].HitboxVisualizerToggle.Enabled then
+        visualizerEnabled = not visualizerEnabled
+        StarterGui:SetCore("SendNotification", {
+            Title = "$",
+            Text = visualizerEnabled and "Hitbox Visualizer On" or "Hitbox Visualizer Off",
+            Duration = 2
+        })
+
+        -- Now toggle the hitbox visualization for the target player
+        if targetPlayer then
+            local rootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local hitbox = rootPart and rootPart:FindFirstChild("HitboxVisualizer")
+            if hitbox then
+                hitbox.Visible = visualizerEnabled
+            end
+        end
+    end
+end
+
+-- Function to find the closest player to the mouse
+local function FindClosestPlayerToMouse()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local mousePos = UserInputService:GetMouseLocation()
+            local screenPos, onScreen = workspace.CurrentCamera:WorldToScreenPoint(player.Character:WaitForChild("HumanoidRootPart").Position)
+            local distance = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+
+            if distance < closestDistance then
+                closestDistance = distance
+                closestPlayer = player
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        if enoxacin['Keybinds'].ToggleScript.Enabled and input.KeyCode == Enum.KeyCode[enoxacin['Keybinds'].ToggleScript.Bind] then
+            ToggleScript()
+        elseif enoxacin['Keybinds'].HitboxVisualizerToggle.Enabled and input.KeyCode == Enum.KeyCode[enoxacin['Keybinds'].HitboxVisualizerToggle.Bind] then
+            ToggleHitboxVisualizer()
+        elseif enoxacin['Keybinds'].TargetBind.Enabled and input.KeyCode == Enum.KeyCode[enoxacin['Keybinds'].TargetBind.Bind] then
+            -- Toggle target: if already targeting, untarget, otherwise target the closest player
+            if targetPlayer then
+                StarterGui:SetCore("SendNotification", {
+                    Title = "$",
+                    Text = "Untargeted " .. targetPlayer.Name,
+                    Duration = 2
+                })
+                -- Destroy the visualizer when untargeted
+                if hitboxVisualizer then
+                    hitboxVisualizer:Destroy()
+                    hitboxVisualizer = nil
+                end
+                targetPlayer = nil  -- Untarget
+            else
+                -- Target the closest player when the target key is pressed
+                targetPlayer = FindClosestPlayerToMouse()
+                if targetPlayer then
+                    StarterGui:SetCore("SendNotification", {
+                        Title = "$",
+                        Text = "Targeting " .. targetPlayer.Name,
+                        Duration = 2
+                    })
+                    -- Create a new visualizer for the target player
+                    local rootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if rootPart then
+                        hitboxVisualizer = Instance.new("Part")
+                        hitboxVisualizer.Name = "HitboxVisualizer"
+                        hitboxVisualizer.Size = _G.HitboxSize
+                        hitboxVisualizer.Transparency = 0.7
+                        hitboxVisualizer.Color = Color3.fromRGB(128, 128, 128)
+                        hitboxVisualizer.Anchored = true
+                        hitboxVisualizer.CanCollide = false
+                        hitboxVisualizer.CanTouch = false
+                        hitboxVisualizer.Massless = true
+                        hitboxVisualizer.Parent = rootPart
+                    end
+                end
+            end
+        end
+    end
+end)
+
+coroutine.wrap(function()
+    while true do
+        heartbeat:Wait()
+        if scriptEnabled and targetPlayer then
+            local humanoidRootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if humanoidRootPart then
+                local lastPosition = humanoidRootPart.Position
+                task.wait()
+                local currentPosition = humanoidRootPart.Position
+                local velocity = GetNewVelocity(humanoidRootPart)
+                humanoidRootPart.AssemblyLinearVelocity = velocity
+                humanoidRootPart.Velocity = velocity
+            end
+        end
+    end
+end)()
+
+RunService.RenderStepped:Connect(function()
+    if scriptEnabled and targetPlayer then
+        local rootPart = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local humanoid = targetPlayer.Character and targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+        if rootPart and humanoid then
+            -- Update or create the hitbox visualizer for the target player
+            if not hitboxVisualizer then
+                hitboxVisualizer = Instance.new("Part")
+                hitboxVisualizer.Name = "HitboxVisualizer"
+                hitboxVisualizer.Size = _G.HitboxSize
+                hitboxVisualizer.Transparency = 0.7
+                hitboxVisualizer.Color = Color3.fromRGB(128, 128, 128)
+                hitboxVisualizer.Anchored = true
+                hitboxVisualizer.CanCollide = false
+                hitboxVisualizer.CanTouch = false
+                hitboxVisualizer.Massless = true
+                hitboxVisualizer.Parent = rootPart
+            else
+                hitboxVisualizer.Size = _G.HitboxSize
+            end
+
+            -- Get the velocity and apply the prediction (X, Y, Z)
+            local velocity = GetMoveVelocity(targetPlayer)
+            local predictedPosition = ApplyPrediction(rootPart, velocity)
+
+            hitboxVisualizer.CFrame = CFrame.new(hitboxVisualizer.Position:Lerp(predictedPosition, 0.2))
+            hitboxVisualizer.Visible = visualizerEnabled
+        end
+    end
+end)
